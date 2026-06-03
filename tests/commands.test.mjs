@@ -70,7 +70,7 @@ test("adversarial review command uses AskUserQuestion and background Bash while 
   assert.match(source, /can still take extra focus text after the flags/i);
 });
 
-test("continue is not exposed as a user-facing command", () => {
+test("only supported user-facing commands are exposed", () => {
   const commandFiles = fs.readdirSync(path.join(PLUGIN_ROOT, "commands")).sort();
   assert.deepEqual(commandFiles, [
     "adversarial-review.md",
@@ -79,8 +79,21 @@ test("continue is not exposed as a user-facing command", () => {
     "result.md",
     "review.md",
     "setup.md",
-    "status.md"
+    "status.md",
+    "thread.md"
   ]);
+});
+
+test("thread command exposes native Codex app-server threads", () => {
+  const source = read("commands/thread.md");
+  assert.match(source, /disable-model-invocation:\s*true/);
+  assert.match(source, /codex-companion\.mjs" thread "\$ARGUMENTS"/);
+  assert.match(source, /Create and steer native Codex app-server threads/i);
+  assert.match(source, /new \[prompt\]/);
+  assert.match(source, /send <thread-id> \[prompt\]/);
+  assert.match(source, /list/);
+  assert.match(source, /Return the command stdout verbatim, exactly as-is/i);
+  assert.match(source, /Use `--write` only when the user explicitly wants Codex to make edits/i);
 });
 
 test("rescue command absorbs continue semantics", () => {
@@ -163,6 +176,8 @@ test("rescue command absorbs continue semantics", () => {
   assert.match(readme, /uses the same review target selection as `\/codex:review`/i);
   assert.match(readme, /--base main challenge whether this was the right caching and retry design/);
   assert.match(readme, /### `\/codex:rescue`/);
+  assert.match(readme, /### `\/codex:thread`/);
+  assert.match(readme, /\/codex:thread send 019e8b50-99dd-70d3-a76f-5fa3401cae5b continue from there/);
   assert.match(readme, /### `\/codex:status`/);
   assert.match(readme, /### `\/codex:result`/);
   assert.match(readme, /### `\/codex:cancel`/);

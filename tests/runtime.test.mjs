@@ -175,6 +175,81 @@ test("task runs when the active provider does not require OpenAI login", () => {
   assert.match(result.stdout, /Handled the requested task/);
 });
 
+test("thread new creates a persistent app-server thread", () => {
+  const repo = makeTempDir();
+  const binDir = makeTempDir();
+  installFakeCodex(binDir);
+  initGitRepo(repo);
+  fs.writeFileSync(path.join(repo, "README.md"), "hello\n");
+  run("git", ["add", "README.md"], { cwd: repo });
+  run("git", ["commit", "-m", "init"], { cwd: repo });
+
+  const result = run("node", [SCRIPT, "thread", "new", "--json", "--name", "Claude native thread", "say hi"], {
+    cwd: repo,
+    env: buildEnv(binDir)
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.action, "new");
+  assert.equal(payload.threadId, "thr_1");
+  assert.equal(payload.rawOutput, "Handled the requested task.\nTask prompt accepted.");
+});
+
+test("thread list shows app-server threads for the workspace", () => {
+  const repo = makeTempDir();
+  const binDir = makeTempDir();
+  installFakeCodex(binDir);
+  initGitRepo(repo);
+  fs.writeFileSync(path.join(repo, "README.md"), "hello\n");
+  run("git", ["add", "README.md"], { cwd: repo });
+  run("git", ["commit", "-m", "init"], { cwd: repo });
+
+  const created = run("node", [SCRIPT, "thread", "new", "--json", "--name", "Listable thread", "say hi"], {
+    cwd: repo,
+    env: buildEnv(binDir)
+  });
+  assert.equal(created.status, 0, created.stderr);
+
+  const result = run("node", [SCRIPT, "thread", "list", "--json"], {
+    cwd: repo,
+    env: buildEnv(binDir)
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.threads.length, 1);
+  assert.equal(payload.threads[0].id, "thr_1");
+  assert.equal(payload.threads[0].name, "Listable thread");
+});
+
+test("thread send resumes an existing app-server thread", () => {
+  const repo = makeTempDir();
+  const binDir = makeTempDir();
+  installFakeCodex(binDir);
+  initGitRepo(repo);
+  fs.writeFileSync(path.join(repo, "README.md"), "hello\n");
+  run("git", ["add", "README.md"], { cwd: repo });
+  run("git", ["commit", "-m", "init"], { cwd: repo });
+
+  const created = run("node", [SCRIPT, "thread", "new", "--json", "say hi"], {
+    cwd: repo,
+    env: buildEnv(binDir)
+  });
+  assert.equal(created.status, 0, created.stderr);
+
+  const result = run("node", [SCRIPT, "thread", "send", "thr_1", "--json", "follow up"], {
+    cwd: repo,
+    env: buildEnv(binDir)
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.action, "send");
+  assert.equal(payload.threadId, "thr_1");
+  assert.match(payload.rawOutput, /Follow-up prompt accepted/);
+});
+
 test("task runs without auth preflight so Codex can refresh an expired session", () => {
   const repo = makeTempDir();
   const binDir = makeTempDir();

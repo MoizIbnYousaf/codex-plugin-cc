@@ -60,8 +60,7 @@ function buildThreadParams(cwd, options = {}) {
     approvalPolicy: options.approvalPolicy ?? "never",
     sandbox: options.sandbox ?? "read-only",
     serviceName: SERVICE_NAME,
-    ephemeral: options.ephemeral ?? true,
-    experimentalRawEvents: false
+    ephemeral: options.ephemeral ?? true
   };
 }
 
@@ -1047,6 +1046,28 @@ export async function findLatestTaskThread(cwd) {
       response.data.find((thread) => typeof thread.name === "string" && thread.name.startsWith(TASK_THREAD_PREFIX)) ??
       null
     );
+  });
+}
+
+export async function listAppServerThreads(cwd, options = {}) {
+  const availability = getCodexAvailability(cwd);
+  if (!availability.available) {
+    throw new Error("Codex CLI is not installed or is missing required runtime support. Install it with `npm install -g @openai/codex`, then rerun `/codex:setup`.");
+  }
+
+  return withAppServer(cwd, async (client) => {
+    const limit = Number.isInteger(options.limit) && options.limit > 0 ? options.limit : 20;
+    const response = await client.request("thread/list", {
+      cwd,
+      limit,
+      sortKey: "updated_at",
+      searchTerm: options.searchTerm ?? null
+    });
+
+    return {
+      threads: Array.isArray(response.data) ? response.data : [],
+      nextCursor: response.nextCursor ?? null
+    };
   });
 }
 

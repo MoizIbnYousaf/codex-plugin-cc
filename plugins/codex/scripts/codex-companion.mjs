@@ -15,6 +15,7 @@ import {
     getCodexAvailability,
     getSessionRuntimeStatus,
     interruptAppServerTurn,
+    listAppServerThreads,
     parseStructuredOutput,
     readOutputSchema,
     runAppServerReview,
@@ -59,7 +60,9 @@ import {
   renderJobStatusReport,
   renderSetupReport,
   renderStatusReport,
-  renderTaskResult
+  renderTaskResult,
+  renderThreadListReport,
+  renderThreadRunResult
 } from "./lib/render.mjs";
 
 const ROOT_DIR = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -78,6 +81,7 @@ function printUsage() {
       "  node scripts/codex-companion.mjs review [--wait|--background] [--base <ref>] [--scope <auto|working-tree|branch>]",
       "  node scripts/codex-companion.mjs adversarial-review [--wait|--background] [--base <ref>] [--scope <auto|working-tree|branch>] [focus text]",
       "  node scripts/codex-companion.mjs task [--background] [--write] [--resume-last|--resume|--fresh] [--model <model|spark>] [--effort <none|minimal|low|medium|high|xhigh>] [prompt]",
+      "  node scripts/codex-companion.mjs thread <new|send|list> [options] [prompt]",
       "  node scripts/codex-companion.mjs status [job-id] [--all] [--json]",
       "  node scripts/codex-companion.mjs result [job-id] [--json]",
       "  node scripts/codex-companion.mjs cancel [job-id] [--json]"
@@ -792,6 +796,116 @@ async function handleTask(argv) {
   );
 }
 
+function parsePositiveInteger(value, fallback) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parseThreadAction(positionals) {
+  const action = String(positionals[0] ?? "").trim().toLowerCase();
+  if (!action || action === "create" || action === "start" || action === "new") {
+    if (action) {
+      positionals.shift();
+    }
+    return "new";
+  }
+  if (action === "continue" || action === "reply" || action === "send") {
+    positionals.shift();
+    return "send";
+  }
+  if (action === "ls" || action === "list") {
+    positionals.shift();
+    return "list";
+  }
+  return "new";
+}
+
+function buildThreadPrompt(cwd, options, positionals) {
+  const prompt = readTaskPrompt(cwd, options, positionals);
+  if (!prompt.trim()) {
+    throw new Error("Provide a prompt for the Codex thread.");
+  }
+  return prompt;
+}
+
+async function handleThread(argv) {
+  const { options, positionals } = parseCommandInput(argv, {
+    valueOptions: ["model", "effort", "cwd", "prompt-file", "name", "limit", "search"],
+    booleanOptions: ["json", "write"],
+    aliasMap: {
+      m: "model"
+    }
+  });
+
+  const cwd = resolveCommandCwd(options);
+  const workspaceRoot = resolveCommandWorkspace(options);
+  const action = parseThreadAction(positionals);
+  const model = normalizeRequestedModel(options.model);
+  const effort = normalizeReasoningEffort(options.effort);
+  const write = Boolean(options.write);
+
+  if (action === "list") {
+    const payload = await listAppServerThreads(workspaceRoot, {
+      limit: parsePositiveInteger(options.limit, 20),
+      searchTerm: options.search ?? null
+    });
+    outputCommandResult(payload, renderThreadListReport(payload), options.json);
+    return;
+  }
+
+  if (action === "send") {
+    const threadId = positionals.shift();
+    if (!threadId) {
+      throw new Error("Provide the Codex thread ID to send to.");
+    }
+    const prompt = buildThreadPrompt(cwd, options, positionals);
+    const result = await runAppServerTurn(workspaceRoot, {
+      resumeThreadId: threadId,
+      prompt,
+      model,
+      effort,
+      sandbox: write ? "workspace-write" : "read-only"
+    });
+    const payload = {
+      action,
+      status: result.status,
+      threadId: result.threadId,
+      turnId: result.turnId,
+      rawOutput: result.finalMessage,
+      touchedFiles: result.touchedFiles,
+      reasoningSummary: result.reasoningSummary
+    };
+    outputCommandResult(payload, renderThreadRunResult(payload, { action }), options.json);
+    if (result.status !== 0) {
+      process.exitCode = result.status;
+    }
+    return;
+  }
+
+  const prompt = buildThreadPrompt(cwd, options, positionals);
+  const result = await runAppServerTurn(workspaceRoot, {
+    prompt,
+    model,
+    effort,
+    sandbox: write ? "workspace-write" : "read-only",
+    persistThread: true,
+    threadName: options.name ?? null
+  });
+  const payload = {
+    action,
+    status: result.status,
+    threadId: result.threadId,
+    turnId: result.turnId,
+    rawOutput: result.finalMessage,
+    touchedFiles: result.touchedFiles,
+    reasoningSummary: result.reasoningSummary
+  };
+  outputCommandResult(payload, renderThreadRunResult(payload, { action }), options.json);
+  if (result.status !== 0) {
+    process.exitCode = result.status;
+  }
+}
+
 async function handleTaskWorker(argv) {
   const { options } = parseCommandInput(argv, {
     valueOptions: ["cwd", "job-id"]
@@ -999,6 +1113,9 @@ async function main() {
       break;
     case "task":
       await handleTask(argv);
+      break;
+    case "thread":
+      await handleThread(argv);
       break;
     case "task-worker":
       await handleTaskWorker(argv);

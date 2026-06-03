@@ -12,6 +12,7 @@ they already have.
 - `/codex:review` for a normal read-only Codex review
 - `/codex:adversarial-review` for a steerable challenge review
 - `/codex:rescue`, `/codex:status`, `/codex:result`, and `/codex:cancel` to delegate work and manage background jobs
+- `/codex:thread` to create, list, and send prompts to native Codex app-server threads
 
 ## Requirements
 
@@ -161,6 +162,23 @@ Ask Codex to redesign the database connection to be more resilient.
 - if you do not pass `--model` or `--effort`, Codex chooses its own defaults.
 - if you say `spark`, the plugin maps that to `gpt-5.3-codex-spark`
 - follow-up rescue requests can continue the latest Codex task in the repo
+
+### `/codex:thread`
+
+Creates and steers native Codex app-server threads for the current repository.
+
+Use it when you want Claude Code to create a real Codex thread, send a follow-up to a known Codex thread ID, or list recent native Codex threads without going through the rescue job queue.
+
+Examples:
+
+```bash
+/codex:thread hi
+/codex:thread new --name "Research pass" inspect the API surface
+/codex:thread send 019e8b50-99dd-70d3-a76f-5fa3401cae5b continue from there
+/codex:thread list
+```
+
+By default, threads are read-only. Add `--write` only when you want Codex to edit files. Use `--model` and `--effort` when you need explicit runtime controls.
 
 ### `/codex:status`
 

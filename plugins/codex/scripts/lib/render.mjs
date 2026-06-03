@@ -322,6 +322,45 @@ export function renderTaskResult(parsedResult, meta) {
   return `${message}\n`;
 }
 
+export function renderThreadRunResult(result, meta = {}) {
+  const lines = ["# Codex Thread", ""];
+  if (meta.action === "send") {
+    lines.push(`Sent follow-up to Codex thread ${result.threadId}.`);
+  } else {
+    lines.push(`Created Codex thread ${result.threadId}.`);
+  }
+  lines.push(`Resume in Codex: codex resume ${result.threadId}`);
+
+  const rawOutput = typeof result.rawOutput === "string" ? result.rawOutput.trim() : "";
+  const failureMessage = typeof result.failureMessage === "string" ? result.failureMessage.trim() : "";
+  if (rawOutput) {
+    lines.push("", rawOutput);
+  } else if (failureMessage) {
+    lines.push("", failureMessage);
+  }
+
+  appendReasoningSection(lines, result.reasoningSummary);
+  return `${lines.join("\n").trimEnd()}\n`;
+}
+
+export function renderThreadListReport(report) {
+  const lines = ["# Codex Threads", ""];
+  if (!report.threads.length) {
+    lines.push("No Codex app-server threads found for this workspace.");
+    return `${lines.join("\n").trimEnd()}\n`;
+  }
+
+  lines.push("| Thread ID | Name | Preview | Updated | Resume |");
+  lines.push("| --- | --- | --- | --- | --- |");
+  for (const thread of report.threads) {
+    lines.push(
+      `| ${escapeMarkdownCell(thread.id)} | ${escapeMarkdownCell(thread.name ?? "")} | ${escapeMarkdownCell(thread.preview ?? "")} | ${escapeMarkdownCell(thread.updatedAt ?? "")} | ${escapeMarkdownCell(`codex resume ${thread.id}`)} |`
+    );
+  }
+
+  return `${lines.join("\n").trimEnd()}\n`;
+}
+
 export function renderStatusReport(report) {
   const lines = [
     "# Codex Status",
